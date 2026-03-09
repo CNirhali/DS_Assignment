@@ -1,10 +1,9 @@
 import re
 from typing import List, Dict, Tuple, Optional
-from google import genai
-from google.genai import types
 import os
 
 from rfp_mapper.models import RFPMappingResult, ColumnMapping, TargetFieldAlias
+import json
 
 # --- Heuristic Exact Match Dictionaries ---
 # These are used for fast, high-confidence mapping without involving the LLM.
@@ -43,17 +42,20 @@ def clean_column_name(col: str) -> str:
     return col.strip().lower()
 
 class Mapper:
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, use_llm: bool = True, model_name: str = "llama3"):
         """
         Initializes the hybrid mapper. 
-        Uses google-genai for the LLM component.
+        Uses local Ollama for the LLM component.
         """
-        # Attempt to get from env if not provided
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
-        if self.api_key:
-            self.client = genai.Client(api_key=self.api_key)
-        else:
-            self.client = None # Allow instantiation without key for heuristic-only fallback tests
+        self.use_llm = use_llm
+        self.model_name = model_name
+        if self.use_llm:
+            try:
+                import ollama
+                self.ollama = ollama
+            except ImportError:
+                print("Warning: ollama library not found. Falling back to heuristics only.")
+                self.use_llm = False
             
     def map_columns(self, columns: List[str]) -> RFPMappingResult:
         """
@@ -80,18 +82,18 @@ class Mapper:
                 unmapped_columns.append(col)
                 
         # 2. Second Pass: LLM Semantic Mapping (for remaining columns)
-        if unmapped_columns and self.client:
+        if unmapped_columns and self.use_llm:
            llm_mappings = self._call_llm(unmapped_columns, context_columns=columns)
            result_mappings.extend(llm_mappings)
-        elif unmapped_columns and not self.client:
-           # Graceful fallback if no API key is provided
+        elif unmapped_columns and not self.use_llm:
+           # Graceful fallback if no LLM is available
            for col in unmapped_columns:
                result_mappings.append(
                    ColumnMapping(
                        input_column=col,
                        mapped_target_field="unmapped",
                        confidence_score=0.0,
-                       reasoning="No API key provided for LLM fallback, and no exact heuristic match found."
+                       reasoning="LLM mapping is disabled or unavailable. No exact heuristic match found."
                    )
                )
 
@@ -127,22 +129,18 @@ Rules:
 4. "40FT" or "40' HC" typically means "container_type_40hq_rate".
 5. Make sure the output exactly matches the JSON schema requested.
 """
-        
-        response = self.client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=RFPMappingResult,
-                temperature=0.1, # Keep it deterministic and factual
-            ),
-        )
-
         try:
-           # Use model_validate_json to parse the strong typed pydantic response
-           llm_result = RFPMappingResult.model_validate_json(response.text)
-           return llm_result.mappings
+            response = self.ollama.chat(
+                model=self.model_name,
+                messages=[{'role': 'user', 'content': prompt}],
+                format=RFPMappingResult.model_json_schema(),
+                options={'temperature': 0.1}
+            )
+
+            # Use model_validate_json to parse the strong typed pydantic response
+            llm_result = RFPMappingResult.model_validate_json(response['message']['content'])
+            return llm_result.mappings
         except Exception as e:
-           # Fallback mechanism if structure breaks (rare with gemini strict schema)
-           print(f"Failed to parse LLM JSON output: {e}")
+           # Fallback mechanism if structure breaks
+           print(f"Failed to parse Ollama JSON output: {e}")
            return []

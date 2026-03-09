@@ -1,4 +1,3 @@
-import os
 import json
 from rfp_mapper.mapper import Mapper
 
@@ -8,13 +7,16 @@ def run_demo():
     print("=" * 60)
     
     # Initialize the mapper
-    # Note: Requires GEMINI_API_KEY environment variable for the LLM fallback
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("\n[!] WARNING: GEMINI_API_KEY environment variable is not set.")
+    # Note: Requires ollama to be running locally with the chosen model installed
+    try:
+        import ollama
+        use_llm = True
+    except ImportError:
+        print("\n[!] WARNING: `ollama` Python package is not installed.")
         print("The demo will only use exact heuristic matching. The LLM semantic engine will not be active.")
+        use_llm = False
     
-    mapper = Mapper(api_key=api_key)
+    mapper = Mapper(use_llm=use_llm, model_name="llama3")
 
     demo_cases = [
         {

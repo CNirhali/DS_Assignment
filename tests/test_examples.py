@@ -4,8 +4,8 @@ from rfp_mapper.mapper import Mapper
 # We use the module level for the tests
 @pytest.fixture
 def mapper():
-    # Attempt to use real LLM if API key present, otherwise we only test Exact Matches
-    return Mapper()
+    # Allow testing without an LLM running locally unless specifically configured for it
+    return Mapper(use_llm=False)
 
 def test_example_1(mapper):
     columns = [
@@ -49,8 +49,8 @@ def test_example_2(mapper):
     assert mapped_dict.get("T/T") == "transit_time_days"
     assert mapped_dict.get("Curr") == "currency"
     
-    # LLM dependent assertions (if api key is present)
-    if mapper.client:
+    # LLM dependent assertions
+    if mapper.use_llm:
         assert mapped_dict.get("Rate_20") == "container_type_20gp_rate"
         assert mapped_dict.get("Rate_40HC") == "container_type_40hq_rate"
 
@@ -73,7 +73,7 @@ def test_example_3(mapper):
     assert mapped_dict.get("Duration") == "transit_time_days"
     assert mapped_dict.get("Rate Currency") == "currency"
     
-    if mapper.client:
+    if mapper.use_llm:
         assert mapped_dict.get("20’") == "container_type_20gp_rate"
         assert mapped_dict.get("40’ HC") == "container_type_40hq_rate"
 
@@ -95,7 +95,7 @@ def test_example_4_complex(mapper):
 
     assert mapped_dict.get("CCY") == "currency"
     
-    if mapper.client:
+    if mapper.use_llm:
         assert mapped_dict.get("From") == "origin_port"
         assert mapped_dict.get("To") == "destination_port"
         assert mapped_dict.get("20FT USD") == "container_type_20gp_rate"
