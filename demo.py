@@ -16,7 +16,7 @@ def run_demo():
         print("The demo will only use exact heuristic matching. The LLM semantic engine will not be active.")
         use_llm = False
     
-    mapper = Mapper(use_llm=use_llm, model_name="llama3")
+    mapper = Mapper(use_llm=use_llm, model_name="mistral")
 
     demo_cases = [
         {
